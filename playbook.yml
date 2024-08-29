@@ -1,0 +1,99 @@
+- hosts: localhost
+  become: yes
+  tasks:
+    - name: Ensure Homebrew is installed (macOS/Linux)
+      shell: |
+        if ! command -v brew &>/dev/null; then
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        fi
+      args:
+        executable: /bin/bash
+
+    - name: Ensure required packages are installed via Homebrew
+      brew:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - git
+        - tmux
+        - zsh
+        - fzf
+        - zoxide
+        - docker
+        - go
+        - gum
+        - neofetch
+        - htop
+        - curl
+        - wget
+        - nvim
+      when: ansible_os_family == 'Darwin' or ansible_os_family == 'Linux'
+
+    - name: Clone dotfiles repository
+      git:
+        repo: 'https://github.com/ethan-baranowski/dotfiles.git'
+        dest: '~/dotfiles'
+        update: yes
+
+    - name: Symlink zshrc
+      file:
+        src: "~/dotfiles/zsh/.zshrc"
+        dest: "~/.zshrc"
+        state: link
+
+    - name: Symlink tmux.conf
+      file:
+        src: "~/dotfiles/tmux/.tmux.conf"
+        dest: "~/.tmux.conf"
+        state: link
+
+    - name: Install TPM (Tmux Plugin Manager)
+      git:
+        repo: 'https://github.com/tmux-plugins/tpm'
+        dest: '~/.tmux/plugins/tpm'
+
+    - name: Clone Sesh repository
+      git:
+        repo: 'https://github.com/joshmedeski/sesh.git'
+        dest: '~/sesh'
+
+    - name: Build Sesh
+      shell: |
+        cd ~/sesh && make
+      args:
+        executable: /bin/bash
+
+    - name: Copy Sesh binary to /usr/bin
+      copy:
+        src: '~/sesh/sesh'
+        dest: '/usr/bin/sesh'
+        mode: '0755'
+
+    - name: Start Docker service
+      shell: |
+        sudo systemctl start docker
+        sudo systemctl enable docker
+      args:
+        executable: /bin/bash
+
+    - name: Source fzf key bindings and completion
+      shell: echo 'source $(brew --prefix)/opt/fzf/install' >> ~/.zshrc
+      args:
+        executable: /bin/bash
+
+    - name: Install Oh My Zsh
+      shell: |
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+        git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+        git clone https://github.com/zsh-users/zsh-syntax-highlighting ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+      args:
+        executable: /bin/bash
+
+    - name: Set Zsh as the default shell
+      shell: chsh -s $(which zsh)
+      args:
+        executable: /bin/bash
+
+    - name: Source Tmux config
+      shell: tmux source-file ~/.tmux.conf
+      ignore_errors: yes  # Ignores errors if Tmux is not running
