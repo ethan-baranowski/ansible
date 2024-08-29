@@ -1,0 +1,106 @@
+- hosts: localhost
+  become: yes
+  vars:
+    home_dir: "{{ ansible_user_dir }}"
+    brew_prefix: "{{ home_dir }}/.linuxbrew/bin/brew"
+
+  tasks:
+    - name: Ensure Homebrew is installed (Linux)
+      shell: |
+        if ! command -v brew &>/dev/null; then
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo 'eval "$({{ brew_prefix }} shellenv)"' >> {{ home_dir }}/.profile
+          eval "$({{ brew_prefix }} shellenv)"
+        fi
+      args:
+        executable: /bin/bash
+
+    - name: Ensure required packages are installed via Homebrew
+      shell: |
+        eval "$({{ brew_prefix }} shellenv)"
+        brew install {{ item }}
+      loop:
+        - git
+        - tmux
+        - zsh
+        - fzf
+        - zoxide
+        - docker
+        - go
+        - gum
+        - neofetch
+        - htop
+        - curl
+        - wget
+        - nvim
+      args:
+        executable: /bin/bash
+
+    - name: Clone dotfiles repository
+      git:
+        repo: 'https://github.com/ethan-baranowski/dotfiles.git'
+        dest: '{{ home_dir }}/dotfiles'
+        update: yes
+
+    - name: Symlink zshrc
+      file:
+        src: "{{ home_dir }}/dotfiles/zsh/.zshrc"
+        dest: "{{ home_dir }}/.zshrc"
+        state: link
+
+    - name: Symlink tmux.conf
+      file:
+        src: "{{ home_dir }}/dotfiles/tmux/.tmux.conf"
+        dest: "{{ home_dir }}/.tmux.conf"
+        state: link
+
+    - name: Install TPM (Tmux Plugin Manager)
+      git:
+        repo: 'https://github.com/tmux-plugins/tpm'
+        dest: '{{ home_dir }}/.tmux/plugins/tpm'
+
+    - name: Clone Sesh repository
+      git:
+        repo: 'https://github.com/joshmedeski/sesh.git'
+        dest: '{{ home_dir }}/sesh'
+
+    - name: Build Sesh
+      shell: |
+        cd {{ home_dir }}/sesh && make
+      args:
+        executable: /bin/bash
+
+    - name: Copy Sesh binary to /usr/bin
+      copy:
+        src: '{{ home_dir }}/sesh/sesh'
+        dest: '/usr/bin/sesh'
+        mode: '0755'
+
+    - name: Start Docker service
+      shell: |
+        sudo systemctl start docker
+        sudo systemctl enable docker
+      args:
+        executable: /bin/bash
+
+    - name: Source fzf key bindings and completion
+      shell: echo 'source $(brew --prefix)/opt/fzf/install' >> {{ home_dir }}/.zshrc
+      args:
+        executable: /bin/bash
+
+    - name: Install Oh My Zsh
+      shell: |
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+        git clone https://github.com/zsh-users/zsh-autosuggestions {{ home_dir }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+        git clone https://github.com/zsh-users/zsh-syntax-highlighting {{ home_dir }}/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+      args:
+        executable: /bin/bash
+
+    - name: Set Zsh as the default shell
+      shell: chsh -s $(which zsh)
+      args:
+        executable: /bin/bash
+
+    - name: Source Tmux config
+      shell: tmux source-file {{ home_dir }}/.tmux.conf
+      ignore_errors: yes  # Ignores errors if Tmux is not running
